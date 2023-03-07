@@ -1,4 +1,4 @@
-This data assimilation package runs the Local PF with iterations and hybridization with EnKF from Poterjoy (2022) and performs comparisons with a commonly used ensemble Kalman filter.
+This data assimilation package runs the Local PF with iterations and hybridization with an ensemble Kalman filter, as introduced in Poterjoy (2022).
 
 This version can operate with three different models: 
 
