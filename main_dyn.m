@@ -17,7 +17,7 @@ close all; clear all; warning off
 % Choose a model with m_flag:   1 <== Lorenz 63
 %				2 <== Lorenz 96
 %				3 <== Lorenz 05 (model III)
-m_flag = 2;
+m_flag = 0;
 
 %  ........................................................
 %  Specify filter with f_flag{}
@@ -40,7 +40,8 @@ e_name{1} = 'EnKF'; e_name{2} = 'local PF';
 %  --------------------------------------------------------
 
 % --- Model parameters ---
-T   = 1000;   % number of obs times
+%T   = 1000;   % number of obs times
+T   = 100;   % number of obs times
 Ne  = 80;    % number of particles
 
 % Experiment flags
@@ -49,6 +50,14 @@ disp_flag = 1;  % Set to 1 to display mean RMSEs each filter time
 h_flag    = 0;  % Set to 0 for H(x) = x
                 % Set to 1 for H(x) = x^2
                 % Set to 2 for H(x) = log(|x|)
+                % Set to 3 for H(x) = x but representativeness error included
+
+% Choose a different value for I when smoothing output for 
+% simulating representativeness error
+if h_flag == 3, 
+  Ismooth = 30; 
+  if m_flag ~= 3, disp('This operator only works for L05.'), return, end
+end
 
 % --- Observation parameters ---
 sig_y = 1;    % observation error
@@ -96,10 +105,10 @@ switch m_flag
   case 3, 
 
     Nx = 480;    % model variables
-    dt = 0.05; % time step
+    dt = 0.05;   % time step
     F  = 15;     % forcing term (truth)
-    Fe = 15;    % forcing term (model)
-    K  = 32;    % spatial smoothing parameter
+    Fe = 15;     % forcing term (model)
+    K  = 32;     % spatial smoothing parameter
     Im = 12;
     b  = 10.0;
     c  = 2.5;
@@ -168,8 +177,8 @@ end
 %poolobj = parpool(10);
 
 % Run initial ensemble forecast
-%parfor n = 1:Ne
-for n = 1:Ne
+parfor n = 1:Ne
+%for n = 1:Ne
 
   dum = xt + 1*randn(Nx,1);
   switch m_flag
@@ -210,7 +219,7 @@ end
 dum = randn(T,Nx)'*sig_y;
 
 switch h_flag
-  case 0 % ---   H(x) = x + eps   ---
+  case {0,3} % ---   H(x) = x + eps   ---
     Y = H*( xt + dum );
   case 1 % ---   H(x) = x^2 + eps   ---
     Y = H*( (xt.^2 + dum ) );  
@@ -238,6 +247,13 @@ end
 
 e_flag = 0;
 for t = 1:T % Time loop
+
+  % Perform scale separation so DA only sees large scale
+  if h_flag == 3
+    for n = 1:Ne
+      [x{f}(:,n),xsml{f}(:,n)] = filter_l05III(x{f}(:,n),Ismooth);
+    end
+  end
 
   % Plot prior information for each filter time
   if plot_flag
@@ -276,7 +292,7 @@ for t = 1:T % Time loop
 
     % Obs-space priors
     switch h_flag
-      case 0; hx = H*x{f};
+      case {0,3}; hx = H*x{f};
       case 1; hx = H*( (x{f}.^2 ) );
       case 2; hx = H*log(abs(x{f}));
     end
@@ -371,11 +387,16 @@ for t = 1:T % Time loop
 
   end
 
+  % Add small scale back to members before integrating
+  if h_flag == 3
+    x{f} = x{f} + xsml{f};
+  end
+
   % Run ensemble forecast for next cycle
   for f = 1:Nf
     dum = x{f};
-%    parfor n = 1:Ne
-    for n = 1:Ne
+    parfor n = 1:Ne
+%    for n = 1:Ne
       switch m_flag
         case 1 % Lorenz 63
           dum(:,n) = M_nl_l63(dum(:,n),dt,tau,s,r,b);
